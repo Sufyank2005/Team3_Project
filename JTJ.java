@@ -1,18 +1,13 @@
 /**
  * Journey To Joy - Auto Runner Game
  *
- * A side-scrolling auto-runner platformer where the player must navigate obstacles,
- * collect power-ups, and progress through three levels of increasing difficulty.
- * The goal of each level is to reach the end of the level. In level 3, reaching the Queen
- * character ends the game successfully. Features include:
- * - Gravity and double jump mechanics
- * - Health bar and shield power-up
- * - Randomly placed platforms, obstacles, and power-ups
- * - Level progression and scoring
- * - Restart button on game over or completion
+ * A side-scrolling auto-runner platformer with image assets for:
+ * - Player character
+ * - Obstacles (red blocks)
+ * - Queen (final character)
+ * - Health power-ups
+ * - Level-specific platforms
  */
-
-// (Imports remain unchanged)
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
@@ -60,6 +55,15 @@ public class JTJ extends JFrame {
     private int cameraX = 0;
     private HealthBar healthBar;
 
+    // Image assets
+    private Image[] platformImages;
+    private Image obstacleImage;
+    private Image queenImage;
+    private Image playerImage;
+    private Image healthPowerUpImage;
+    private Image shieldPowerUpImage;
+    private Image scorePowerUpImage;
+
     /**
      * Enum representing available power-up types.
      */
@@ -71,15 +75,15 @@ public class JTJ extends JFrame {
     private class PowerUp {
         Rectangle rect;
         PowerUpType type;
-        Color color;
+        Image image;
 
         PowerUp(int x, int y, PowerUpType type) {
             this.rect = new Rectangle(x, y, POWER_UP_SIZE, POWER_UP_SIZE);
             this.type = type;
-            this.color = switch (type) {
-                case SHIELD -> Color.CYAN;
-                case HEALTH -> Color.GREEN;
-                case SCORE_BOOST -> Color.YELLOW;
+            this.image = switch (type) {
+                case SHIELD -> shieldPowerUpImage;
+                case HEALTH -> healthPowerUpImage;
+                case SCORE_BOOST -> scorePowerUpImage;
             };
         }
     }
@@ -122,7 +126,43 @@ public class JTJ extends JFrame {
         setSize(WIDTH, HEIGHT);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setResizable(false);
+
+        // Load all image assets
+        loadImages();
         initializeGame();
+    }
+
+    /**
+     * Loads all game images.
+     */
+    private void loadImages() {
+        // Platform images for each level
+        platformImages = new Image[3];
+        platformImages[0] = loadImage("platform1.png");
+        platformImages[1] = loadImage("platform2.png");
+        platformImages[2] = loadImage("platform3.png");
+
+        // Character and obstacle images
+        obstacleImage = loadImage("obstacle.png");
+        queenImage = loadImage("queen.png");
+        playerImage = loadImage("player.png");
+
+        // Power-up images
+        healthPowerUpImage = loadImage("health_powerup.png");
+        shieldPowerUpImage = loadImage("shield_powerup.png");
+        scorePowerUpImage = loadImage("score_powerup.png");
+    }
+
+    /**
+     * Loads an image from file, returns null if not found.
+     */
+    private Image loadImage(String filename) {
+        try {
+            return new ImageIcon(filename).getImage();
+        } catch (Exception e) {
+            System.err.println("Error loading image: " + filename);
+            return null;
+        }
     }
 
     /**
@@ -197,6 +237,7 @@ public class JTJ extends JFrame {
         Random rand = new Random();
         int worldWidth = LEVEL_LENGTHS[level - 1];
 
+        // Create platforms
         int platformCount = 15 + (level * 5);
         for (int i = 0; i < platformCount; i++) {
             int x = rand.nextInt(worldWidth - PLATFORM_WIDTH);
@@ -204,6 +245,7 @@ public class JTJ extends JFrame {
             platforms.add(new Rectangle(x, y, PLATFORM_WIDTH, PLATFORM_HEIGHT));
         }
 
+        // Create obstacles
         int obstacleCount = 20 + (level * 10);
         for (int i = 0; i < obstacleCount; i++) {
             int x = rand.nextInt(worldWidth - OBSTACLE_WIDTH);
@@ -211,6 +253,7 @@ public class JTJ extends JFrame {
             obstacles.add(new Rectangle(x, y, OBSTACLE_WIDTH, OBSTACLE_HEIGHT));
         }
 
+        // Create power-ups
         int powerUpCount = 5 + (level * 2);
         for (int i = 0; i < powerUpCount; i++) {
             int x = rand.nextInt(worldWidth - POWER_UP_SIZE);
@@ -229,6 +272,7 @@ public class JTJ extends JFrame {
      * Draws all game elements and overlays.
      */
     private void draw(Graphics g) {
+        // Draw background based on level
         Color[] bgColors = {
                 new Color(135, 206, 235), // Level 1 - light sky blue
                 new Color(100, 149, 237), // Level 2 - cornflower blue
@@ -237,36 +281,84 @@ public class JTJ extends JFrame {
         g.setColor(bgColors[currentLevel - 1]);
         g.fillRect(0, 0, WIDTH, HEIGHT);
 
-        g.setColor(new Color(139, 69, 19));
+        // Draw platforms with level-specific images
         for (Rectangle plat : platforms) {
-            if (isVisible(plat)) g.fillRect(plat.x - cameraX, plat.y, plat.width, plat.height);
-        }
-
-        g.setColor(Color.RED);
-        for (Rectangle obs : obstacles) {
-            if (isVisible(obs)) g.fillRect(obs.x - cameraX, obs.y, obs.width, obs.height);
-        }
-
-        for (PowerUp powerUp : powerUps) {
-            if (isVisible(powerUp.rect)) {
-                g.setColor(powerUp.color);
-                g.fillOval(powerUp.rect.x - cameraX, powerUp.rect.y, powerUp.rect.width, powerUp.rect.height);
+            if (isVisible(plat)) {
+                if (platformImages[currentLevel - 1] != null) {
+                    g.drawImage(platformImages[currentLevel - 1],
+                            plat.x - cameraX, plat.y,
+                            plat.width, plat.height, null);
+                } else {
+                    g.setColor(new Color(139, 69, 19)); // Brown fallback
+                    g.fillRect(plat.x - cameraX, plat.y, plat.width, plat.height);
+                }
             }
         }
 
+        // Draw obstacles with image
+        for (Rectangle obs : obstacles) {
+            if (isVisible(obs)) {
+                if (obstacleImage != null) {
+                    g.drawImage(obstacleImage,
+                            obs.x - cameraX, obs.y,
+                            obs.width, obs.height, null);
+                } else {
+                    g.setColor(Color.RED); // Fallback
+                    g.fillRect(obs.x - cameraX, obs.y, obs.width, obs.height);
+                }
+            }
+        }
+
+        // Draw power-ups with images
+        for (PowerUp powerUp : powerUps) {
+            if (isVisible(powerUp.rect)) {
+                if (powerUp.image != null) {
+                    g.drawImage(powerUp.image,
+                            powerUp.rect.x - cameraX, powerUp.rect.y,
+                            powerUp.rect.width, powerUp.rect.height, null);
+                } else {
+                    // Fallback colors
+                    Color color = switch (powerUp.type) {
+                        case SHIELD -> Color.CYAN;
+                        case HEALTH -> Color.GREEN;
+                        case SCORE_BOOST -> Color.YELLOW;
+                    };
+                    g.setColor(color);
+                    g.fillOval(powerUp.rect.x - cameraX, powerUp.rect.y,
+                            powerUp.rect.width, powerUp.rect.height);
+                }
+            }
+        }
+
+        // Draw shield effect if active
         if (hasShield) {
             g.setColor(new Color(0, 255, 255, 100));
             g.fillOval(playerX - cameraX - 10, playerY - 10, PLAYER_WIDTH + 20, PLAYER_HEIGHT + 20);
         }
 
-        g.setColor(Color.BLUE);
-        g.fillRect(playerX - cameraX, playerY, PLAYER_WIDTH, PLAYER_HEIGHT);
-
-        if (queen != null && isVisible(queen)) {
-            g.setColor(Color.PINK);
-            g.fillRect(queen.x - cameraX, queen.y, queen.width, queen.height);
+        // Draw player with image
+        if (playerImage != null) {
+            g.drawImage(playerImage,
+                    playerX - cameraX, playerY,
+                    PLAYER_WIDTH, PLAYER_HEIGHT, null);
+        } else {
+            g.setColor(Color.BLUE); // Fallback
+            g.fillRect(playerX - cameraX, playerY, PLAYER_WIDTH, PLAYER_HEIGHT);
         }
 
+        // Draw queen with image
+        if (queen != null && isVisible(queen)) {
+            if (queenImage != null) {
+                g.drawImage(queenImage,
+                        queen.x - cameraX, queen.y,
+                        queen.width, queen.height, null);
+            } else {
+                g.setColor(Color.PINK); // Fallback
+                g.fillRect(queen.x - cameraX, queen.y, queen.width, queen.height);
+            }
+        }
+
+        // Draw UI elements
         healthBar.draw(g);
 
         if (hasShield) {
@@ -274,6 +366,7 @@ public class JTJ extends JFrame {
             g.drawString("Shield: " + (shieldTime / 50), WIDTH - 100, 30);
         }
 
+        // Draw game over/complete screen
         if (isGameOver || hasReachedQueen()) {
             g.setColor(new Color(0, 0, 0, 150));
             g.fillRect(0, 0, WIDTH, HEIGHT);
