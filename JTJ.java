@@ -17,7 +17,7 @@ import java.util.Random;
 
 public class JTJ extends JFrame {
     // --- Constants defining game dimensions and behaviors ---
-    private static final int WIDTH = 800;
+    private static final int WIDTH = 700;
     private static final int HEIGHT = 500;
     private static final int PLAYER_WIDTH = 40;
     private static final int PLAYER_HEIGHT = 60;
@@ -63,11 +63,14 @@ public class JTJ extends JFrame {
     private Image healthPowerUpImage;
     private Image shieldPowerUpImage;
     private Image scorePowerUpImage;
+    private Image[] backgroundImages;
 
     /**
      * Enum representing available power-up types.
      */
     private enum PowerUpType {SHIELD, HEALTH, SCORE_BOOST}
+    private enum GameState { START, PLAYING, GAME_OVER }
+    private GameState gameState = GameState.START;
 
     /**
      * Represents a power-up with type and position.
@@ -122,7 +125,7 @@ public class JTJ extends JFrame {
      * Main constructor. Sets up frame and initializes game.
      */
     public JTJ() {
-        setTitle("Journey To Joy - Auto Runner");
+        setTitle("Journey To Joy ");
         setSize(WIDTH, HEIGHT);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setResizable(false);
@@ -141,6 +144,10 @@ public class JTJ extends JFrame {
         platformImages[0] = loadImage("platform1.png");
         platformImages[1] = loadImage("platform2.png");
         platformImages[2] = loadImage("platform3.png");
+        backgroundImages = new Image[3];
+        backgroundImages[0] = loadImage("orig1.png"); // Level 1
+        backgroundImages[1] = loadImage("orig2.png"); // Level 2
+        backgroundImages[2] = loadImage("orig.png"); // Level 3
 
         // Character and obstacle images
         obstacleImage = loadImage("obstacle.png");
@@ -205,20 +212,26 @@ public class JTJ extends JFrame {
         gamePanel.addKeyListener(new KeyAdapter() {
             @Override
             public void keyPressed(KeyEvent e) {
-                if (e.getKeyCode() == KeyEvent.VK_SPACE && jumpsRemaining > 0) {
-                    playerVelY = -JUMP_STRENGTH;
-                    isJumping = true;
-                    jumpsRemaining--;
+                if (gameState == GameState.START && e.getKeyCode() == KeyEvent.VK_ENTER) {
+                    gameState = GameState.PLAYING;
+                } else if (gameState == GameState.PLAYING) {
+                    if (e.getKeyCode() == KeyEvent.VK_SPACE && jumpsRemaining > 0) {
+                        playerVelY = -JUMP_STRENGTH;
+                        isJumping = true;
+                        jumpsRemaining--;
+                    }
                 }
             }
         });
 
+
         timer = new Timer(20, e -> {
-            if (!isGameOver && !hasReachedQueen()) {
+            if (!isGameOver && !hasReachedQueen() && gameState == GameState.PLAYING) {
                 update();
-                gamePanel.repaint();
             }
+            gamePanel.repaint(); // Always repaint for menus too
         });
+
         timer.start();
 
         playerX = 100;
@@ -264,7 +277,7 @@ public class JTJ extends JFrame {
 
         // Add Queen only on Level 3 (final goal)
         if (level == 3) {
-            queen = new Rectangle(worldWidth - 150, HEIGHT - PLAYER_HEIGHT - 100, 50, 80);
+            queen = new Rectangle(worldWidth - 150, HEIGHT - PLAYER_HEIGHT - 100, 80, 110);
         }
     }
 
@@ -272,14 +285,30 @@ public class JTJ extends JFrame {
      * Draws all game elements and overlays.
      */
     private void draw(Graphics g) {
+        if (gameState == GameState.START) {
+            g.setColor(Color.BLACK);
+            g.fillRect(0, 0, WIDTH, HEIGHT);
+            g.setColor(Color.WHITE);
+            g.setFont(new Font("Consolas", Font.BOLD, 36));
+            g.drawString("Journey To Joy", WIDTH / 2 - 150, HEIGHT / 2 - 50);
+            g.setFont(new Font("Consolas", Font.PLAIN, 20));
+            g.drawString("Press ENTER to Start", WIDTH / 2 - 110, HEIGHT / 2 + 20);
+            return; // Skip drawing the rest of the game
+        }
+
         // Draw background based on level
-        Color[] bgColors = {
-                new Color(135, 206, 235), // Level 1 - light sky blue
-                new Color(100, 149, 237), // Level 2 - cornflower blue
-                new Color(70, 130, 180)   // Level 3 - steel blue
-        };
-        g.setColor(bgColors[currentLevel - 1]);
-        g.fillRect(0, 0, WIDTH, HEIGHT);
+        if (backgroundImages[currentLevel - 1] != null) {
+            g.drawImage(backgroundImages[currentLevel - 1], 0, 0, WIDTH, HEIGHT, null);
+        } else {
+            Color[] bgColors = {
+                    new Color(135, 206, 235),
+                    new Color(100, 149, 237),
+                    new Color(70, 130, 180)
+            };
+            g.setColor(bgColors[currentLevel - 1]);
+            g.fillRect(0, 0, WIDTH, HEIGHT);
+        }
+
 
         // Draw platforms with level-specific images
         for (Rectangle plat : platforms) {
@@ -376,7 +405,7 @@ public class JTJ extends JFrame {
             if (isGameOver) {
                 g.drawString("Game Over", WIDTH / 2 - 100, HEIGHT / 2 - 30);
             } else {
-                g.drawString("Level Complete!", WIDTH / 2 - 150, HEIGHT / 2 - 30);
+                g.drawString("You Reached Joy!", WIDTH / 2 - 150, HEIGHT / 2 - 30);
             }
 
             g.setFont(new Font("Arial", Font.BOLD, 24));
@@ -506,8 +535,10 @@ public class JTJ extends JFrame {
         setupLevel(currentLevel);
         healthBar.update(health);
         scoreLabel.setText("Score: 0");
+        gameState = GameState.START; // Show start screen again
         timer.start();
     }
+
 
     /**
      * Main entry point to launch the game.
