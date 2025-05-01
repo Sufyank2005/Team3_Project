@@ -483,7 +483,7 @@ public class JTJ extends JFrame {
             }
         }
 
-        score += 1;
+        // Removed the continuous score increase
         scoreLabel.setText("Score: " + score);
     }
 
@@ -500,7 +500,10 @@ public class JTJ extends JFrame {
                 health = Math.min(100, health + 30);
                 healthBar.update(health);
             }
-            case SCORE_BOOST -> score += 100;
+            case SCORE_BOOST -> {
+                score += 100;  // Only increase score when picking up score power-up
+                scoreLabel.setText("Score: " + score);
+            }
         }
     }
 
@@ -538,7 +541,6 @@ public class JTJ extends JFrame {
         gameState = GameState.START; // Show start screen again
         timer.start();
     }
-
 
     /**
      * Main entry point to launch the game.
