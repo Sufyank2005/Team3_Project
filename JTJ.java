@@ -14,6 +14,8 @@ import java.awt.event.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import javax.sound.sampled.*;
+import java.io.File;
 
 public class JTJ extends JFrame {
     // --- Constants defining game dimensions and behaviors ---
@@ -219,6 +221,7 @@ public class JTJ extends JFrame {
                         playerVelY = -JUMP_STRENGTH;
                         isJumping = true;
                         jumpsRemaining--;
+                        playSound("jump.wav");
                     }
                 }
             }
@@ -451,9 +454,11 @@ public class JTJ extends JFrame {
                     health -= 10;
                     healthBar.update(health);
                     obstacles.remove(obs);
+                    playSound("obstacle_impact.wav");
                     if (health <= 0) {
                         isGameOver = true;
                         timer.stop();
+                        playSound("gameover (2).wav");
                     }
                     break;
                 }
@@ -520,7 +525,17 @@ public class JTJ extends JFrame {
     private boolean hasReachedQueen() {
         return queen != null && playerX > queen.x + queen.width;
     }
-
+    private void playSound(String filename) {
+        try {
+            File soundFile = new File(filename);
+            AudioInputStream audioIn = AudioSystem.getAudioInputStream(soundFile);
+            Clip clip = AudioSystem.getClip();
+            clip.open(audioIn);
+            clip.start();
+        } catch (Exception e) {
+            System.err.println("Error playing sound: " + e.getMessage());
+        }
+    }
     /**
      * Restarts the game state from level 1.
      */
