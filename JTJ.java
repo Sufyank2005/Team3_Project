@@ -5,11 +5,11 @@
  * - Animated player character with running and jumping sprites
  * - Multiple levels with increasing difficulty
  * - Power-ups (health, shield, score boost)
- * - Obstacles and platforms
+ * - Animated obstacles and platforms
  * - Queen character as final goal
  *
  * @author Your Name
- * @version 1.1
+ * @version 1.2
  */
 import javax.imageio.ImageIO;
 import javax.swing.*;
@@ -28,7 +28,7 @@ public class JTJ extends JFrame {
     private static final int WIDTH = 700;
     private static final int HEIGHT = 500;
     private static final int PLAYER_WIDTH = 40;
-    private static final int PLAYER_HEIGHT = 110;
+    private static final int PLAYER_HEIGHT = 100;
     private static final int PLATFORM_WIDTH = 100;
     private static final int PLATFORM_HEIGHT = 20;
     private static final int OBSTACLE_WIDTH = 40;
@@ -67,10 +67,16 @@ public class JTJ extends JFrame {
     private BufferedImage[] runSprites;
     private BufferedImage jumpSprite;
     private int currentFrame = 0;
-    private int frameDelay = 10;
+    private int frameDelay = 15;
     private int frameCounter = 0;
     private int lastPlayerX = 0;
     private boolean wasJumping = false;
+
+    // Obstacle animation variables
+    private BufferedImage[] obstacleSprites;
+    private int currentObstacleFrame = 0;
+    private int obstacleFrameDelay = 10;
+    private int obstacleFrameCounter = 0;
 
     // Image assets
     private Image[] platformImages;
@@ -209,6 +215,28 @@ public class JTJ extends JFrame {
         healthPowerUpImage = loadImage("health_powerup.png");
         shieldPowerUpImage = loadImage("shield_powerup.png");
         scorePowerUpImage = loadImage("score_powerup.png");
+
+        // Load obstacle sprite sheet
+        try {
+            BufferedImage obstacleSheet = ImageIO.read(new File("obstacle_sheet.png"));
+            int obstacleFrameCount = 3; // Assuming 3 frames in the sheet
+            obstacleSprites = new BufferedImage[obstacleFrameCount];
+
+            // Assuming frames are laid out horizontally
+            int frameWidth = obstacleSheet.getWidth() / obstacleFrameCount;
+            for (int i = 0; i < obstacleFrameCount; i++) {
+                obstacleSprites[i] = obstacleSheet.getSubimage(
+                        i * frameWidth,
+                        0,
+                        frameWidth,
+                        obstacleSheet.getHeight()
+                );
+            }
+        } catch (IOException e) {
+            System.err.println("Failed to load obstacle sprites: " + e.getMessage());
+            // Fall back to single image
+            obstacleImage = loadImage("obstacle.png");
+        }
     }
 
     /**
@@ -350,12 +378,23 @@ public class JTJ extends JFrame {
             obstacles.add(new Rectangle(x, y, OBSTACLE_WIDTH, OBSTACLE_HEIGHT));
         }
 
-        // Create power-ups
-        int powerUpCount = 5 + (level * 2);
+        // Create power-ups - MODIFIED SECTION
+        int powerUpCount = 10 + (level * 4); // More power-ups
         for (int i = 0; i < powerUpCount; i++) {
             int x = rand.nextInt(worldWidth - POWER_UP_SIZE);
             int y = rand.nextInt(HEIGHT - 100);
-            PowerUpType type = PowerUpType.values()[rand.nextInt(PowerUpType.values().length)];
+
+            // Weighted probability (50% score, 25% shield, 25% health)
+            PowerUpType type;
+            double randVal = rand.nextDouble();
+            if (randVal < 0.5) {
+                type = PowerUpType.SCORE_BOOST;
+            } else if (randVal < 0.75) {
+                type = PowerUpType.SHIELD;
+            } else {
+                type = PowerUpType.HEALTH;
+            }
+
             powerUps.add(new PowerUp(x, y, type));
         }
 
@@ -410,10 +449,14 @@ public class JTJ extends JFrame {
             }
         }
 
-        // Draw obstacles with image
+        // Draw obstacles with animation
         for (Rectangle obs : obstacles) {
             if (isVisible(obs)) {
-                if (obstacleImage != null) {
+                if (obstacleSprites != null && currentObstacleFrame < obstacleSprites.length) {
+                    g.drawImage(obstacleSprites[currentObstacleFrame],
+                            obs.x - cameraX, obs.y,
+                            obs.width, obs.height, null);
+                } else if (obstacleImage != null) {
                     g.drawImage(obstacleImage,
                             obs.x - cameraX, obs.y,
                             obs.width, obs.height, null);
@@ -593,6 +636,13 @@ public class JTJ extends JFrame {
             }
         }
 
+        // Update obstacle animation
+        obstacleFrameCounter++;
+        if (obstacleFrameCounter >= obstacleFrameDelay) {
+            currentObstacleFrame = (currentObstacleFrame + 1) % (obstacleSprites != null ? obstacleSprites.length : 1);
+            obstacleFrameCounter = 0;
+        }
+
         // Animation control
         if (isJumping || playerVelY != 0) {
             currentAnimation = AnimationState.JUMPING;
@@ -709,6 +759,4 @@ public class JTJ extends JFrame {
             gameWindow.setLocationRelativeTo(null);  // Center the window on the screen
         });
     }
-
-
 }
