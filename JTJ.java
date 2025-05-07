@@ -1,16 +1,22 @@
 /**
- * Journey To Joy - Auto Runner Game
+ * Journey To Joy - Auto Runner Game with Sprite Animations
  *
- * A side-scrolling auto-runner platformer with image assets for:
- * - Player character
- * - Obstacles (red blocks)
- * - Queen (final character)
- * - Health power-ups
- * - Level-specific platforms
+ * A side-scrolling auto-runner platformer featuring:
+ * - Animated player character with running and jumping sprites
+ * - Multiple levels with increasing difficulty
+ * - Power-ups (health, shield, score boost)
+ * - Obstacles and platforms
+ * - Queen character as final goal
+ *
+ * @author Your Name
+ * @version 1.1
  */
+import javax.imageio.ImageIO;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
+import java.awt.image.BufferedImage;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -22,11 +28,11 @@ public class JTJ extends JFrame {
     private static final int WIDTH = 700;
     private static final int HEIGHT = 500;
     private static final int PLAYER_WIDTH = 40;
-    private static final int PLAYER_HEIGHT = 60;
+    private static final int PLAYER_HEIGHT = 110;
     private static final int PLATFORM_WIDTH = 100;
     private static final int PLATFORM_HEIGHT = 20;
     private static final int OBSTACLE_WIDTH = 40;
-    private static final int OBSTACLE_HEIGHT = 40;
+    private static final int OBSTACLE_HEIGHT = 30;
     private static final int POWER_UP_SIZE = 25;
     private static final int PLAYER_SPEED = 5;
     private static final int JUMP_STRENGTH = 16;
@@ -57,11 +63,19 @@ public class JTJ extends JFrame {
     private int cameraX = 0;
     private HealthBar healthBar;
 
+    // Animation variables
+    private BufferedImage[] runSprites;
+    private BufferedImage jumpSprite;
+    private int currentFrame = 0;
+    private int frameDelay = 10;
+    private int frameCounter = 0;
+    private int lastPlayerX = 0;
+    private boolean wasJumping = false;
+
     // Image assets
     private Image[] platformImages;
     private Image obstacleImage;
     private Image queenImage;
-    private Image playerImage;
     private Image healthPowerUpImage;
     private Image shieldPowerUpImage;
     private Image scorePowerUpImage;
@@ -70,9 +84,19 @@ public class JTJ extends JFrame {
     /**
      * Enum representing available power-up types.
      */
-    private enum PowerUpType {SHIELD, HEALTH, SCORE_BOOST}
+    private enum PowerUpType { SHIELD, HEALTH, SCORE_BOOST }
+
+    /**
+     * Enum representing game states.
+     */
     private enum GameState { START, PLAYING, GAME_OVER }
     private GameState gameState = GameState.START;
+
+    /**
+     * Enum representing player animation states.
+     */
+    private enum AnimationState { IDLE, RUNNING, JUMPING }
+    private AnimationState currentAnimation = AnimationState.IDLE;
 
     /**
      * Represents a power-up with type and position.
@@ -82,6 +106,13 @@ public class JTJ extends JFrame {
         PowerUpType type;
         Image image;
 
+        /**
+         * Creates a new power-up at specified coordinates.
+         *
+         * @param x The x-coordinate of the power-up
+         * @param y The y-coordinate of the power-up
+         * @param type The type of power-up
+         */
         PowerUp(int x, int y, PowerUpType type) {
             this.rect = new Rectangle(x, y, POWER_UP_SIZE, POWER_UP_SIZE);
             this.type = type;
@@ -100,6 +131,14 @@ public class JTJ extends JFrame {
         private int x, y, width, height;
         private int currentHealth;
 
+        /**
+         * Creates a new health bar.
+         *
+         * @param x The x-coordinate of the health bar
+         * @param y The y-coordinate of the health bar
+         * @param width The width of the health bar
+         * @param height The height of the health bar
+         */
         HealthBar(int x, int y, int width, int height) {
             this.x = x;
             this.y = y;
@@ -108,6 +147,11 @@ public class JTJ extends JFrame {
             this.currentHealth = health;
         }
 
+        /**
+         * Draws the health bar on screen.
+         *
+         * @param g The Graphics object to draw with
+         */
         void draw(Graphics g) {
             g.setColor(Color.RED);
             g.fillRect(x, y, width, height);
@@ -118,6 +162,11 @@ public class JTJ extends JFrame {
             g.drawRect(x, y, width, height);
         }
 
+        /**
+         * Updates the health bar with current health value.
+         *
+         * @param health The current health value
+         */
         void update(int health) {
             this.currentHealth = health;
         }
@@ -127,7 +176,7 @@ public class JTJ extends JFrame {
      * Main constructor. Sets up frame and initializes game.
      */
     public JTJ() {
-        setTitle("Journey To Joy ");
+        setTitle("Journey To Joy");
         setSize(WIDTH, HEIGHT);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setResizable(false);
@@ -138,7 +187,7 @@ public class JTJ extends JFrame {
     }
 
     /**
-     * Loads all game images.
+     * Loads all game images from files.
      */
     private void loadImages() {
         // Platform images for each level
@@ -146,15 +195,15 @@ public class JTJ extends JFrame {
         platformImages[0] = loadImage("platform1.png");
         platformImages[1] = loadImage("platform2.png");
         platformImages[2] = loadImage("platform3.png");
+
         backgroundImages = new Image[3];
         backgroundImages[0] = loadImage("orig1.png"); // Level 1
         backgroundImages[1] = loadImage("orig2.png"); // Level 2
-        backgroundImages[2] = loadImage("orig.png"); // Level 3
+        backgroundImages[2] = loadImage("orig.png");  // Level 3
 
         // Character and obstacle images
         obstacleImage = loadImage("obstacle.png");
         queenImage = loadImage("queen.png");
-        playerImage = loadImage("player.png");
 
         // Power-up images
         healthPowerUpImage = loadImage("health_powerup.png");
@@ -163,7 +212,10 @@ public class JTJ extends JFrame {
     }
 
     /**
-     * Loads an image from file, returns null if not found.
+     * Loads an image from file.
+     *
+     * @param filename The name of the image file to load
+     * @return The loaded Image, or null if loading failed
      */
     private Image loadImage(String filename) {
         try {
@@ -227,28 +279,57 @@ public class JTJ extends JFrame {
             }
         });
 
-
         timer = new Timer(20, e -> {
             if (!isGameOver && !hasReachedQueen() && gameState == GameState.PLAYING) {
                 update();
             }
-            gamePanel.repaint(); // Always repaint for menus too
+            gamePanel.repaint();
         });
 
         timer.start();
 
         playerX = 100;
-        playerY = HEIGHT - PLAYER_HEIGHT - 50;
+        playerY = HEIGHT - PLAYER_HEIGHT - 80;
+        lastPlayerX = playerX;
     }
 
     /**
-     * Sets up the world with increasing elements as level increases.
+     * Sets up the game world for a specific level.
+     *
+     * @param level The level number to set up (1-3)
      */
     private void setupLevel(int level) {
         platforms.clear();
         obstacles.clear();
         powerUps.clear();
         queen = null;
+
+        // Load sprite sheets
+        try {
+            // Load running animation (4 frames)
+            BufferedImage runSheet = ImageIO.read(new File("mainchar_run.png"));
+            int runFrameCount = 2;
+            runSprites = new BufferedImage[runFrameCount];
+            for (int i = 0; i < runFrameCount; i++) {
+                runSprites[i] = new BufferedImage(PLAYER_WIDTH, PLAYER_HEIGHT, BufferedImage.TYPE_INT_ARGB);
+                Graphics2D g = runSprites[i].createGraphics();
+                g.drawImage(runSheet.getSubimage(
+                                i * (runSheet.getWidth()/runFrameCount),
+                                0,
+                                runSheet.getWidth()/runFrameCount,
+                                runSheet.getHeight()),
+                        0, 0, PLAYER_WIDTH, PLAYER_HEIGHT, null);
+                g.dispose();
+            }
+
+            // Load jumping sprite
+            jumpSprite = ImageIO.read(new File("mainchar_jump.png"));
+
+        } catch (IOException e) {
+            System.err.println("Failed to load sprite sheets: " + e.getMessage());
+            runSprites = null;
+            jumpSprite = null;
+        }
 
         Random rand = new Random();
         int worldWidth = LEVEL_LENGTHS[level - 1];
@@ -286,9 +367,12 @@ public class JTJ extends JFrame {
 
     /**
      * Draws all game elements and overlays.
+     *
+     * @param g The Graphics object to draw with
      */
     private void draw(Graphics g) {
         if (gameState == GameState.START) {
+            // Draw start screen
             g.setColor(Color.BLACK);
             g.fillRect(0, 0, WIDTH, HEIGHT);
             g.setColor(Color.WHITE);
@@ -296,7 +380,7 @@ public class JTJ extends JFrame {
             g.drawString("Journey To Joy", WIDTH / 2 - 150, HEIGHT / 2 - 50);
             g.setFont(new Font("Consolas", Font.PLAIN, 20));
             g.drawString("Press ENTER to Start", WIDTH / 2 - 110, HEIGHT / 2 + 20);
-            return; // Skip drawing the rest of the game
+            return;
         }
 
         // Draw background based on level
@@ -311,7 +395,6 @@ public class JTJ extends JFrame {
             g.setColor(bgColors[currentLevel - 1]);
             g.fillRect(0, 0, WIDTH, HEIGHT);
         }
-
 
         // Draw platforms with level-specific images
         for (Rectangle plat : platforms) {
@@ -368,13 +451,27 @@ public class JTJ extends JFrame {
             g.fillOval(playerX - cameraX - 10, playerY - 10, PLAYER_WIDTH + 20, PLAYER_HEIGHT + 20);
         }
 
-        // Draw player with image
-        if (playerImage != null) {
-            g.drawImage(playerImage,
-                    playerX - cameraX, playerY,
-                    PLAYER_WIDTH, PLAYER_HEIGHT, null);
-        } else {
-            g.setColor(Color.BLUE); // Fallback
+        // Draw player with appropriate animation
+        if (currentAnimation == AnimationState.JUMPING && jumpSprite != null) {
+            g.drawImage(jumpSprite,
+                    playerX - cameraX,
+                    playerY,
+                    PLAYER_WIDTH,
+                    PLAYER_HEIGHT,
+                    null);
+        } else if (runSprites != null && currentFrame < runSprites.length) {
+            // Scale the running sprite to match PLAYER_WIDTH and PLAYER_HEIGHT
+            Image runImage = runSprites[currentFrame].getScaledInstance(PLAYER_WIDTH, PLAYER_HEIGHT, Image.SCALE_DEFAULT);
+            g.drawImage(runImage,
+                    playerX - cameraX,
+                    playerY,
+                    PLAYER_WIDTH,
+                    PLAYER_HEIGHT,
+                    null);
+        }
+        else {
+            // Fallback
+            g.setColor(Color.BLUE);
             g.fillRect(playerX - cameraX, playerY, PLAYER_WIDTH, PLAYER_HEIGHT);
         }
 
@@ -418,18 +515,21 @@ public class JTJ extends JFrame {
     }
 
     /**
-     * Handles game logic, physics, collisions, and level transitions.
+     * Updates game state, including player movement, collisions, and animations.
      */
     private void update() {
         playerX += PLAYER_SPEED;
 
+        // Camera follow
         if (playerX > cameraX + WIDTH / 2 && cameraX < LEVEL_LENGTHS[currentLevel - 1] - WIDTH) {
             cameraX = playerX - WIDTH / 2;
         }
 
+        // Apply gravity
         playerVelY += GRAVITY;
         playerY += playerVelY;
 
+        // Ground collision
         if (playerY + PLAYER_HEIGHT > HEIGHT) {
             playerY = HEIGHT - PLAYER_HEIGHT;
             playerVelY = 0;
@@ -437,6 +537,7 @@ public class JTJ extends JFrame {
             jumpsRemaining = 2;
         }
 
+        // Platform collisions
         for (Rectangle plat : platforms) {
             if (new Rectangle(playerX, playerY, PLAYER_WIDTH, PLAYER_HEIGHT).intersects(plat)) {
                 if (playerVelY >= 0) {
@@ -448,6 +549,7 @@ public class JTJ extends JFrame {
             }
         }
 
+        // Obstacle collisions
         if (!hasShield) {
             for (Rectangle obs : obstacles) {
                 if (new Rectangle(playerX, playerY, PLAYER_WIDTH, PLAYER_HEIGHT).intersects(obs)) {
@@ -465,6 +567,7 @@ public class JTJ extends JFrame {
             }
         }
 
+        // Power-up collisions
         for (PowerUp powerUp : powerUps) {
             if (new Rectangle(playerX, playerY, PLAYER_WIDTH, PLAYER_HEIGHT).intersects(powerUp.rect)) {
                 applyPowerUp(powerUp.type);
@@ -473,8 +576,10 @@ public class JTJ extends JFrame {
             }
         }
 
+        // Shield timer
         if (hasShield && --shieldTime <= 0) hasShield = false;
 
+        // Level progression
         if (playerX > LEVEL_LENGTHS[currentLevel - 1]) {
             if (currentLevel < 3) {
                 currentLevel++;
@@ -488,12 +593,35 @@ public class JTJ extends JFrame {
             }
         }
 
-        // Removed the continuous score increase
+        // Animation control
+        if (isJumping || playerVelY != 0) {
+            currentAnimation = AnimationState.JUMPING;
+            wasJumping = true;
+        } else if (playerX != lastPlayerX) {
+            currentAnimation = AnimationState.RUNNING;
+            frameCounter++;
+            if (frameCounter >= frameDelay) {
+                currentFrame = (currentFrame + 1) % runSprites.length;
+                frameCounter = 0;
+            }
+        } else {
+            currentAnimation = AnimationState.IDLE;
+            currentFrame = 0;
+        }
+
+        // Check for landing
+        if (wasJumping && !isJumping && playerVelY == 0) {
+            wasJumping = false;
+        }
+
+        lastPlayerX = playerX;
         scoreLabel.setText("Score: " + score);
     }
 
     /**
      * Applies the effect of a collected power-up.
+     *
+     * @param type The type of power-up to apply
      */
     private void applyPowerUp(PowerUpType type) {
         switch (type) {
@@ -506,25 +634,36 @@ public class JTJ extends JFrame {
                 healthBar.update(health);
             }
             case SCORE_BOOST -> {
-                score += 100;  // Only increase score when picking up score power-up
+                score += 100;
                 scoreLabel.setText("Score: " + score);
             }
         }
     }
 
     /**
-     * Checks if the object is within the visible screen (camera view).
+     * Checks if an object is within the visible screen area.
+     *
+     * @param rect The rectangle to check
+     * @return true if the object is visible, false otherwise
      */
     private boolean isVisible(Rectangle rect) {
         return rect.x + rect.width > cameraX && rect.x < cameraX + WIDTH;
     }
 
     /**
-     * Checks whether the player has passed the Queen (end of level 3).
+     * Checks whether the player has reached the Queen (end of level 3).
+     *
+     * @return true if the player has reached the Queen, false otherwise
      */
     private boolean hasReachedQueen() {
         return queen != null && playerX > queen.x + queen.width;
     }
+
+    /**
+     * Plays a sound effect from file.
+     *
+     * @param filename The name of the sound file to play
+     */
     private void playSound(String filename) {
         try {
             File soundFile = new File(filename);
@@ -536,6 +675,7 @@ public class JTJ extends JFrame {
             System.err.println("Error playing sound: " + e.getMessage());
         }
     }
+
     /**
      * Restarts the game state from level 1.
      */
@@ -553,14 +693,22 @@ public class JTJ extends JFrame {
         setupLevel(currentLevel);
         healthBar.update(health);
         scoreLabel.setText("Score: 0");
-        gameState = GameState.START; // Show start screen again
+        gameState = GameState.START;
         timer.start();
     }
 
     /**
      * Main entry point to launch the game.
+     *
+     * @param args Command line arguments (not used)
      */
     public static void main(String[] args) {
-        SwingUtilities.invokeLater(() -> new JTJ().setVisible(true));
+        SwingUtilities.invokeLater(() -> {
+            JTJ gameWindow = new JTJ();  // Create the game window
+            gameWindow.setVisible(true);  // Make the window visible
+            gameWindow.setLocationRelativeTo(null);  // Center the window on the screen
+        });
     }
+
+
 }
