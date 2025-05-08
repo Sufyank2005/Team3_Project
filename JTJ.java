@@ -579,7 +579,7 @@ public class JTJ extends JFrame {
 
         // Add Queen only on Level 3 (final goal)
         if (level == 3) {
-            queen = new Rectangle(worldWidth - 150, HEIGHT - PLAYER_HEIGHT - 100, 80, 110);
+            queen = new Rectangle(worldWidth - 150, HEIGHT - PLAYER_HEIGHT - 100, 80, 80);
         }
     }
 
