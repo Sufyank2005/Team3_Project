@@ -9,8 +9,7 @@
  * - Queen character as final goal
  * - Persistent top score (start screen only)
  *
- * @author Your Name
- * @version 1.5
+ * @authors Sufyan K. Haroon K. Hana M. Fatima M. Ishaben M. Tom D
  */
 import javax.imageio.ImageIO;
 import javax.swing.*;
@@ -399,7 +398,7 @@ public class JTJ extends JFrame {
             if (backgroundMusic.isControlSupported(FloatControl.Type.MASTER_GAIN)) {
                 volumeControl = (FloatControl) backgroundMusic.getControl(FloatControl.Type.MASTER_GAIN);
                 float range = volumeControl.getMaximum() - volumeControl.getMinimum();
-                float gain = (range * 0.5f) + volumeControl.getMinimum();
+                float gain = (range * 0.65f) + volumeControl.getMinimum();
                 volumeControl.setValue(gain);
             }
 
