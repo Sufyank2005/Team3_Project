@@ -7,21 +7,24 @@
  * - Power-ups (health, shield, score boost)
  * - Animated obstacles and platforms
  * - Queen character as final goal
+ * - Persistent top score (start screen only)
  *
  * @author Your Name
- * @version 1.2
+ * @version 1.5
  */
 import javax.imageio.ImageIO;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.awt.image.BufferedImage;
-import java.io.IOException;
+import java.io.*;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 import javax.sound.sampled.*;
-import java.io.File;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 public class JTJ extends JFrame {
     // --- Constants defining game dimensions and behaviors ---
@@ -40,6 +43,9 @@ public class JTJ extends JFrame {
 
     // Each level gets progressively longer (harder)
     private static final int[] LEVEL_LENGTHS = {2000, 3500, 5000};
+
+    // Leaderboard constants - now using single top score
+    private static final String HIGH_SCORES_FILE = System.getProperty("user.home") + "/JourneyToJoy_topscore.dat";
 
     // --- Game State Variables ---
     private JPanel gamePanel;
@@ -62,6 +68,14 @@ public class JTJ extends JFrame {
     private Rectangle queen = null;
     private int cameraX = 0;
     private HealthBar healthBar;
+    private Clip backgroundMusic;
+    private FloatControl volumeControl;
+    private Clip victoryClip;
+    private boolean victorySoundPlayed = false;
+
+    // Top score variable
+    private HighScoreEntry topScore;
+    private boolean newTopScore = false;
 
     // Animation variables
     private BufferedImage[] runSprites;
@@ -86,6 +100,30 @@ public class JTJ extends JFrame {
     private Image shieldPowerUpImage;
     private Image scorePowerUpImage;
     private Image[] backgroundImages;
+
+    /**
+     * Represents a top score entry with player initials
+     */
+    private class HighScoreEntry implements Serializable {
+        private static final long serialVersionUID = 1L;
+        String initials;
+        int score;
+
+        /**
+         * Creates a new top score entry
+         * @param initials Player initials (2 letters)
+         * @param score The score achieved
+         */
+        HighScoreEntry(String initials, int score) {
+            this.initials = initials;
+            this.score = score;
+        }
+
+        @Override
+        public String toString() {
+            return String.format("%2s %6d", initials, score);
+        }
+    }
 
     /**
      * Enum representing available power-up types.
@@ -187,6 +225,25 @@ public class JTJ extends JFrame {
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setResizable(false);
 
+        // Add window listener to clean up audio
+        addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                if (backgroundMusic != null) {
+                    backgroundMusic.close();
+                }
+                if (victoryClip != null) {
+                    victoryClip.close();
+                }
+                saveTopScore();
+            }
+        });
+
+        // Add shutdown hook to ensure scores are saved
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            saveTopScore();
+        }));
+
         // Load all image assets
         loadImages();
         initializeGame();
@@ -264,6 +321,9 @@ public class JTJ extends JFrame {
         healthBar = new HealthBar(120, 15, 200, 20);
         setupLevel(currentLevel);
 
+        // Load top score at game start
+        loadTopScore();
+
         gamePanel = new JPanel() {
             @Override
             protected void paintComponent(Graphics g) {
@@ -284,7 +344,7 @@ public class JTJ extends JFrame {
         gamePanel.add(levelLabel);
 
         restartButton = new JButton("Restart");
-        restartButton.setBounds(WIDTH/2 - 50, HEIGHT/2 + 50, 100, 30);
+        restartButton.setBounds(WIDTH/2 - 50, HEIGHT - 100, 100, 30);
         restartButton.addActionListener(e -> restartGame());
         restartButton.setVisible(false);
         gamePanel.add(restartButton);
@@ -319,6 +379,127 @@ public class JTJ extends JFrame {
         playerX = 100;
         playerY = HEIGHT - PLAYER_HEIGHT - 80;
         lastPlayerX = playerX;
+
+        // Start background music
+        playBackgroundMusic("background_music.wav");
+    }
+
+    /**
+     * Plays background music in a loop.
+     * @param filename The name of the music file to play
+     */
+    private void playBackgroundMusic(String filename) {
+        try {
+            File musicFile = new File(filename);
+            AudioInputStream audioInput = AudioSystem.getAudioInputStream(musicFile);
+            backgroundMusic = AudioSystem.getClip();
+            backgroundMusic.open(audioInput);
+
+            // Get volume control and set to 50% volume
+            if (backgroundMusic.isControlSupported(FloatControl.Type.MASTER_GAIN)) {
+                volumeControl = (FloatControl) backgroundMusic.getControl(FloatControl.Type.MASTER_GAIN);
+                float range = volumeControl.getMaximum() - volumeControl.getMinimum();
+                float gain = (range * 0.5f) + volumeControl.getMinimum();
+                volumeControl.setValue(gain);
+            }
+
+            backgroundMusic.loop(Clip.LOOP_CONTINUOUSLY);
+        } catch (Exception e) {
+            System.err.println("Error with background music: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Plays the victory sound when reaching the queen
+     */
+    private void playVictorySound() {
+        try {
+            File soundFile = new File("meet_the_queen.wav");
+            AudioInputStream audioIn = AudioSystem.getAudioInputStream(soundFile);
+            victoryClip = AudioSystem.getClip();
+            victoryClip.open(audioIn);
+
+            if (victoryClip.isControlSupported(FloatControl.Type.MASTER_GAIN)) {
+                FloatControl gainControl = (FloatControl) victoryClip.getControl(FloatControl.Type.MASTER_GAIN);
+                float range = gainControl.getMaximum() - gainControl.getMinimum();
+                float gain = (range * 0.7f) + gainControl.getMinimum();
+                gainControl.setValue(gain);
+            }
+
+            victoryClip.start();
+        } catch (Exception e) {
+            System.err.println("Error playing victory sound: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Loads the top score from file
+     */
+    private void loadTopScore() {
+        File file = new File(HIGH_SCORES_FILE);
+        if (!file.exists()) {
+            topScore = new HighScoreEntry("aa", 0); // Default empty score
+            return;
+        }
+
+        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(file))) {
+            Object obj = ois.readObject();
+            if (obj instanceof HighScoreEntry) {
+                topScore = (HighScoreEntry) obj;
+            } else {
+                topScore = new HighScoreEntry("aa", 0);
+            }
+        } catch (Exception e) {
+            System.err.println("Error loading top score, creating new: " + e.getMessage());
+            topScore = new HighScoreEntry("aa", 0);
+        }
+    }
+
+    /**
+     * Saves the top score to file
+     */
+    private void saveTopScore() {
+        try {
+            File file = new File(HIGH_SCORES_FILE);
+            file.getParentFile().mkdirs();
+
+            try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(file))) {
+                oos.writeObject(topScore);
+            }
+        } catch (IOException e) {
+            System.err.println("Error saving top score: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Prompts for initials when achieving a new top score
+     * @return The user's initials (2 lowercase letters)
+     */
+    private String getInitials() {
+        String initials = JOptionPane.showInputDialog(this,
+                "New Top Score! Enter your initials (2 letters):",
+                "Top Score",
+                JOptionPane.PLAIN_MESSAGE);
+
+        // Validate input
+        if (initials == null) return "aa";
+        initials = initials.toLowerCase().trim();
+        if (initials.length() != 2 || !initials.matches("[a-z]{2}")) {
+            return "aa";
+        }
+        return initials;
+    }
+
+    /**
+     * Checks if current score beats the top score and updates if needed
+     */
+    private void checkAndUpdateTopScore() {
+        if (score > topScore.score) {
+            newTopScore = true;
+            String initials = getInitials();
+            topScore = new HighScoreEntry(initials, score);
+            saveTopScore();
+        }
     }
 
     /**
@@ -378,13 +559,12 @@ public class JTJ extends JFrame {
             obstacles.add(new Rectangle(x, y, OBSTACLE_WIDTH, OBSTACLE_HEIGHT));
         }
 
-        // Create power-ups - MODIFIED SECTION
-        int powerUpCount = 10 + (level * 4); // More power-ups
+        // Create power-ups
+        int powerUpCount = 10 + (level * 4);
         for (int i = 0; i < powerUpCount; i++) {
             int x = rand.nextInt(worldWidth - POWER_UP_SIZE);
             int y = rand.nextInt(HEIGHT - 100);
 
-            // Weighted probability (50% score, 25% shield, 25% health)
             PowerUpType type;
             double randVal = rand.nextDouble();
             if (randVal < 0.5) {
@@ -419,6 +599,15 @@ public class JTJ extends JFrame {
             g.drawString("Journey To Joy", WIDTH / 2 - 150, HEIGHT / 2 - 50);
             g.setFont(new Font("Consolas", Font.PLAIN, 20));
             g.drawString("Press ENTER to Start", WIDTH / 2 - 110, HEIGHT / 2 + 20);
+
+            // Draw top score on start screen
+            g.setFont(new Font("Arial", Font.BOLD, 24));
+            g.drawString("Top Score:", WIDTH / 2 - 80, HEIGHT / 2 + 60);
+            g.setFont(new Font("Arial", Font.PLAIN, 18));
+            g.drawString(topScore.toString(),
+                    WIDTH / 2 - 80,
+                    HEIGHT / 2 + 85);
+
             return;
         }
 
@@ -553,6 +742,14 @@ public class JTJ extends JFrame {
 
             g.setFont(new Font("Arial", Font.BOLD, 24));
             g.drawString("Score: " + score, WIDTH / 2 - 80, HEIGHT / 2 + 10);
+
+            // Highlight new top score
+            if (newTopScore) {
+                g.setColor(Color.YELLOW);
+                g.setFont(new Font("Arial", Font.BOLD, 20));
+                g.drawString("New Top Score!", WIDTH / 2 - 80, HEIGHT / 2 + 40);
+            }
+
             restartButton.setVisible(true);
         }
     }
@@ -706,7 +903,14 @@ public class JTJ extends JFrame {
      * @return true if the player has reached the Queen, false otherwise
      */
     private boolean hasReachedQueen() {
-        return queen != null && playerX > queen.x + queen.width;
+        if (queen != null && playerX > queen.x + queen.width) {
+            if (!victorySoundPlayed) {
+                playVictorySound();
+                victorySoundPlayed = true;
+            }
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -730,6 +934,25 @@ public class JTJ extends JFrame {
      * Restarts the game state from level 1.
      */
     private void restartGame() {
+        // Check and update top score when game ends
+        if (hasReachedQueen() || isGameOver) {
+            checkAndUpdateTopScore();
+        }
+
+        // Reset game state
+        victorySoundPlayed = false;
+        newTopScore = false;
+
+        // Stop current music if playing
+        if (backgroundMusic != null && backgroundMusic.isRunning()) {
+            backgroundMusic.stop();
+        }
+
+        // Stop any playing victory sound
+        if (victoryClip != null && victoryClip.isRunning()) {
+            victoryClip.stop();
+        }
+
         isGameOver = false;
         score = 0;
         health = 100;
@@ -745,6 +968,9 @@ public class JTJ extends JFrame {
         scoreLabel.setText("Score: 0");
         gameState = GameState.START;
         timer.start();
+
+        // Restart music
+        playBackgroundMusic("background_music.wav");
     }
 
     /**
